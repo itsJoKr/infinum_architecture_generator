@@ -6,9 +6,11 @@ import org.apache.commons.lang.text.StrSubstitutor
 import java.io.InputStreamReader
 import java.lang.RuntimeException
 
-abstract class BlocGenerator(private val name: String,
-                             useEquatable: Boolean,
-                             templateName: String) {
+abstract class AbsInteractorGenerator(
+    private val name: String,
+    useEquatable: Boolean,
+    templateName: String
+) {
 
     private val TEMPLATE_BLOC_PASCAL_CASE = "bloc_pascal_case"
     private val TEMPLATE_BLOC_SNAKE_CASE = "bloc_snake_case"
@@ -22,9 +24,8 @@ abstract class BlocGenerator(private val name: String,
             TEMPLATE_BLOC_SNAKE_CASE to snakeCase()
         )
         try {
-            val templateFolder = if (useEquatable) "bloc_with_equatable" else "bloc_without_equatable"
-            val resource = "/templates/$templateFolder/$templateName.dart.template"
-            val resourceAsStream = BlocGenerator::class.java.getResourceAsStream(resource)
+            val resource = "/templates/interactor/$templateName.dart.template"
+            val resourceAsStream = AbsInteractorGenerator::class.java.getResourceAsStream(resource)
             templateString = CharStreams.toString(InputStreamReader(resourceAsStream, Charsets.UTF_8))
         } catch (e: Exception) {
             throw RuntimeException(e)
@@ -38,9 +39,23 @@ abstract class BlocGenerator(private val name: String,
         return substitutor.replace(templateString)
     }
 
-    fun pascalCase(): String = name.toUpperCamelCase().replace("Bloc", "")
+    fun generateImportLine(): String {
+        return """
+            import 'package:modra/domain/interactor/${snakeCase()}/${snakeCase()}_interactor.dart';
+            import 'package:modra/domain/interactor/${snakeCase()}/${snakeCase()}_interactor_impl.dart';${"\n"}
+        """.trimIndent()
+    }
 
-    fun snakeCase() = name.toLowerSnakeCase().replace("_bloc", "")
+    fun generateInjectionLine(): String {
+        return """
+  getIt.registerFactory<${pascalCase()}Interactor>(
+    () => ${pascalCase()}InteractorImpl(),
+  );${"\n\n"}"""
+    }
+
+    fun pascalCase(): String = name.toUpperCamelCase().replace("Interactor", "")
+
+    fun snakeCase() = name.toLowerSnakeCase().replace("_interactor", "")
 
     fun fileExtension() = "dart"
 }

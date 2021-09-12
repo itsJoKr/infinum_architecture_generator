@@ -1,13 +1,15 @@
 package com.bloc.intellij_generator_plugin.action
 
 import com.bloc.intellij_generator_plugin.generator.BlocGeneratorFactory
-import com.bloc.intellij_generator_plugin.generator.BlocGenerator
+import com.bloc.intellij_generator_plugin.generator.AbsInteractorGenerator
 import com.intellij.lang.java.JavaLanguage
 import com.intellij.openapi.actionSystem.*
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.command.CommandProcessor
 import com.intellij.openapi.project.Project
+import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.psi.*
+import com.intellij.psi.impl.file.PsiDirectoryFactory
 
 class GenerateBlocAction : AnAction(), GenerateBlocDialog.Listener {
 
@@ -21,7 +23,7 @@ class GenerateBlocAction : AnAction(), GenerateBlocDialog.Listener {
     override fun onGenerateBlocClicked(blocName: String?, shouldUseEquatable: Boolean) {
         blocName?.let { name ->
             val generators = BlocGeneratorFactory.getBlocGenerators(name, shouldUseEquatable)
-            generate(generators)
+            generate(generators, name)
         }
     }
 
@@ -33,23 +35,30 @@ class GenerateBlocAction : AnAction(), GenerateBlocDialog.Listener {
         }
     }
 
-    protected fun generate(mainSourceGenerators: List<BlocGenerator>) {
+    protected fun generate(mainSourceGenerators: List<AbsInteractorGenerator>, name: String) {
         val project = CommonDataKeys.PROJECT.getData(dataContext)
-        val view = LangDataKeys.IDE_VIEW.getData(dataContext)
-        val directory = view?.orChooseDirectory
+
         ApplicationManager.getApplication().runWriteAction {
+            val path = project!!.baseDir.findChild("lib")!!.findChild("domain")!!.findChild("interactor")!!
+                .createChildDirectory(null, mainSourceGenerators.first().snakeCase())!!
+            val directory = PsiDirectoryFactory.getInstance(project).createDirectory(path)
+
+            val diFile = project!!.baseDir.findChild("lib")!!.findChild("domain")!!.findChild("di")!!
+                .findChild("inject_dependencies.dart")!!
+
             CommandProcessor.getInstance().executeCommand(
                 project,
                 {
-                    mainSourceGenerators.forEach { createSourceFile(project!!, it, directory!!) }
+                    mainSourceGenerators.forEach { createSourceFile(project, it, directory) }
+                    modifyInjectDependencies(project, mainSourceGenerators, diFile)
                 },
-                "Generate a new Bloc",
+                "Generate a new interactor",
                 null
             )
         }
     }
 
-    private fun createSourceFile(project: Project, generator: BlocGenerator, directory: PsiDirectory) {
+    private fun createSourceFile(project: Project, generator: AbsInteractorGenerator, directory: PsiDirectory) {
         val fileName = generator.fileName()
         val existingPsiFile = directory.findFile(fileName)
         if (existingPsiFile != null) {
@@ -60,5 +69,36 @@ class GenerateBlocAction : AnAction(), GenerateBlocDialog.Listener {
         val psiFile = PsiFileFactory.getInstance(project)
             .createFileFromText(fileName, JavaLanguage.INSTANCE, generator.generate())
         directory.add(psiFile)
+    }
+
+    private fun modifyInjectDependencies(
+        project: Project,
+        generators: List<AbsInteractorGenerator>,
+        diFile: VirtualFile
+    ) {
+//        diFile.
+        val psiFile = PsiManager.getInstance(project).findFile(diFile)!!
+
+        val document = PsiDocumentManager.getInstance(project).getDocument(psiFile)!!
+        val text = document.text
+//        document?.insertString(document.textLength, "\n" + generator.generate())
+        val closingOffset = text.indexOfLast { it == '}' }
+
+        document.insertString(closingOffset, "\n" + generators.first().generateInjectionLine())
+        document.insertString(0, generators.first().generateImportLine())
+
+        val a = 1
+        return
+
+//        val fileName = generator.fileName()
+//        val existingPsiFile = directory.findFile(fileName)
+//        if (existingPsiFile != null) {
+//            val document = PsiDocumentManager.getInstance(project).getDocument(existingPsiFile)
+//            document?.insertString(document.textLength, "\n" + generator.generate())
+//            return
+//        }
+//        val psiFile = PsiFileFactory.getInstance(project)
+//            .createFileFromText(fileName, JavaLanguage.INSTANCE, generator.generate())
+//        directory.add(psiFile)
     }
 }
